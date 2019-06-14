@@ -5,6 +5,8 @@ If you're integrating FusionAuth with an Angular application, this library will 
 
 For additional information and documentation on FusionAuth refer to [https://fusionauth.io](https://fusionauth.io).
 
+> **WARNING**: This project is still in development, feel free to use, but it may not work. You may still feel free to open issues or submit PRs. 
+
 Installation
 To install fusionauth-angular-client, use npm
 
