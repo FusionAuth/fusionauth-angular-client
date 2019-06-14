@@ -9,7 +9,7 @@ Installation
 To install fusionauth-angular-client, use npm
 
 ```bash
-npm install @fusionauth/fusionauth-angular-client
+npm install @fusionauth/angular-client
 ```
 
 Refer to the FusionAuth API documentation to for request and response formats.
