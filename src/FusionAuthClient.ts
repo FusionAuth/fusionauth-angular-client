@@ -23,7 +23,21 @@ export class FusionAuthClient {
 
   public clientBuilder: IRESTClientBuilder = new DefaultRESTClientBuilder();
 
-  constructor(public apiKey: string, public host: string) {
+  constructor(
+    public apiKey: string,
+    public host: string,
+    public tenantId?: string
+  ) { }
+
+  /**
+   * Sets the tenant id, that will be included in the X-FusionAuth-TenantId header.
+   *
+   * @param {string | null} tenantId The value of the X-FusionAuth-TenantId header.
+   * @returns {FusionAuthClient}
+   */
+  setTenantId(tenantId: string | null): FusionAuthClient {
+    this.tenantId = tenantId;
+    return this;
   }
 
   /**
@@ -86,7 +100,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<ChangePasswordResponse>>}
    */
   changePassword(changePasswordId: string, request: ChangePasswordRequest): Observable<ClientResponse<ChangePasswordResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/user/change-password')
         .withUriSegment(changePasswordId)
         .withJSONBody(request)
@@ -301,6 +315,22 @@ export class FusionAuthClient {
         .withJSONBody(request)
         .withMethod("POST")
         .go<TenantResponse>();
+  }
+
+  /**
+   * Creates a Theme. You can optionally specify an Id for the theme, if not provided one will be generated.
+   *
+   * @param {string} themeId (Optional) The Id for the theme. If not provided a secure random UUID will be generated.
+   * @param {ThemeRequest} request The request object that contains all of the information used to create the theme.
+   * @returns {Observable<ClientResponse<ThemeResponse>>}
+   */
+  createTheme(themeId: string, request: ThemeRequest): Observable<ClientResponse<ThemeResponse>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withUriSegment(themeId)
+        .withJSONBody(request)
+        .withMethod("POST")
+        .go<ThemeResponse>();
   }
 
   /**
@@ -606,6 +636,20 @@ export class FusionAuthClient {
   }
 
   /**
+   * Deletes the theme for the given Id.
+   *
+   * @param {string} themeId The Id of the theme to delete.
+   * @returns {Observable<ClientResponse<void>>}
+   */
+  deleteTheme(themeId: string): Observable<ClientResponse<void>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withUriSegment(themeId)
+        .withMethod("DELETE")
+        .go<void>();
+  }
+
+  /**
    * Deletes the user for the given Id. This permanently deletes all information, metrics, reports and data associated
    * with the user.
    *
@@ -712,17 +756,95 @@ export class FusionAuthClient {
   }
 
   /**
+   * Exchanges an OAuth authorization code for an access token.
+   * If you will be using the Authorization Code grant, you will make a request to the Token endpoint to exchange the authorization code returned from the Authorize endpoint for an access token.
+   *
+   * @param {string} code The authorization code returned on the /oauth2/authorize response.
+   * @param {string} client_id (Optional) The unique client identifier. The client Id is the Id of the FusionAuth Application in which you you are attempting to authenticate. This parameter is optional when the Authorization header is provided.
+   * @param {string} client_secret (Optional) The client secret. This value may optionally be provided in the request body instead of the Authorization header.
+   * @param {string} redirect_uri The URI to redirect to upon a successful request.
+   * @returns {Observable<ClientResponse<AccessToken>>}
+   */
+  exchangeOAuthCodeForAccessToken(code: string, client_id: string, client_secret: string, redirect_uri: string): Observable<ClientResponse<AccessToken>> {
+    let body = new FormData();
+    body.append('code', code);
+    body.append('client_id', client_id);
+    body.append('client_secret', client_secret);
+    body.append('grant_type', 'authorization_code');
+    body.append('redirect_uri', redirect_uri);
+    return this.startAnonymous()
+        .withUri('/oauth2/token')
+        .withFormData(body)
+        .withMethod("POST")
+        .go<AccessToken>();
+  }
+
+  /**
+   * Exchange a Refresh Token for an Access Token.
+   * If you will be using the Refresh Token Grant, you will make a request to the Token endpoint to exchange the user’s refresh token for an access token.
+   *
+   * @param {string} refresh_token The refresh token that you would like to use to exchange for an access token.
+   * @param {string} client_id (Optional) The unique client identifier. The client Id is the Id of the FusionAuth Application in which you you are attempting to authenticate. This parameter is optional when the Authorization header is provided.
+   * @param {string} client_secret (Optional) The client secret. This value may optionally be provided in the request body instead of the Authorization header.
+   * @param {string} scope (Optional) This parameter is optional and if omitted, the same scope requested during the authorization request will be used. If provided the scopes must match those requested during the initial authorization request.
+   * @param {string} user_code (Optional) The end-user verification code. This code is required if using this endpoint to approve the Device Authorization.
+   * @returns {Observable<ClientResponse<AccessToken>>}
+   */
+  exchangeRefreshTokenForAccessToken(refresh_token: string, client_id: string, client_secret: string, scope: string, user_code: string): Observable<ClientResponse<AccessToken>> {
+    let body = new FormData();
+    body.append('refresh_token', refresh_token);
+    body.append('client_id', client_id);
+    body.append('client_secret', client_secret);
+    body.append('grant_type', 'refresh_token');
+    body.append('scope', scope);
+    body.append('user_code', user_code);
+    return this.startAnonymous()
+        .withUri('/oauth2/token')
+        .withFormData(body)
+        .withMethod("POST")
+        .go<AccessToken>();
+  }
+
+  /**
    * Exchange a refresh token for a new JWT.
    *
    * @param {RefreshRequest} request The refresh request.
    * @returns {Observable<ClientResponse<RefreshResponse>>}
    */
   exchangeRefreshTokenForJWT(request: RefreshRequest): Observable<ClientResponse<RefreshResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/jwt/refresh')
         .withJSONBody(request)
         .withMethod("POST")
         .go<RefreshResponse>();
+  }
+
+  /**
+   * Exchange User Credentials for a Token.
+   * If you will be using the Resource Owner Password Credential Grant, you will make a request to the Token endpoint to exchange the user’s email and password for an access token.
+   *
+   * @param {string} username The login identifier of the user. The login identifier can be either the email or the username.
+   * @param {string} password The user’s password.
+   * @param {string} client_id (Optional) The unique client identifier. The client Id is the Id of the FusionAuth Application in which you you are attempting to authenticate. This parameter is optional when the Authorization header is provided.
+   * @param {string} client_secret (Optional) The client secret. This value may optionally be provided in the request body instead of the Authorization header.
+   * @param {string} scope (Optional) This parameter is optional and if omitted, the same scope requested during the authorization request will be used. If provided the scopes must match those requested during the initial authorization request.
+   * @param {string} user_code (Optional) The end-user verification code. This code is required if using this endpoint to approve the Device Authorization.
+   * @returns {Observable<ClientResponse<AccessToken>>}
+   */
+  exchangeUserCredentialsForAccessToken(username: string, password: string, client_id: string, client_secret: string, scope: string, user_code: string): Observable<ClientResponse<AccessToken>> {
+    let body = new FormData();
+    body.append('username', username);
+    body.append('password', password);
+    body.append('client_id', client_id);
+    body.append('client_secret', client_secret);
+    body.append('grant_type', 'password');
+    body.append('scope', scope);
+    body.append('user_code', user_code);
+    return this.startAnonymous()
+        .withUri('/oauth2/token')
+        .withFormData(body)
+        .withMethod("POST")
+        .go<AccessToken>();
   }
 
   /**
@@ -732,7 +854,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<ForgotPasswordResponse>>}
    */
   forgotPassword(request: ForgotPasswordRequest): Observable<ClientResponse<ForgotPasswordResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/user/forgot-password')
         .withJSONBody(request)
         .withMethod("POST")
@@ -750,7 +872,7 @@ export class FusionAuthClient {
     return this.start()
         .withUri('/api/user/verify-email')
         .withParameter('email', email)
-        .withParameter('sendVerifyPasswordEmail', false)
+        .withParameter('sendVerifyEmail', false)
         .withMethod("PUT")
         .go<VerifyEmailResponse>();
   }
@@ -828,7 +950,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<LoginResponse>>}
    */
   identityProviderLogin(request: IdentityProviderLoginRequest): Observable<ClientResponse<LoginResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/identity-provider/login')
         .withJSONBody(request)
         .withMethod("POST")
@@ -888,7 +1010,9 @@ export class FusionAuthClient {
   }
 
   /**
-   * Logs a user in.
+   * Authenticates a user to FusionAuth. 
+   * 
+   * This API optionally requires an API key. See <code>Application.loginConfiguration.requireAuthentication</code>.
    *
    * @param {LoginRequest} request The login request that contains the user credentials used to log them in.
    * @returns {Observable<ClientResponse<LoginResponse>>}
@@ -935,7 +1059,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<void>>}
    */
   logout(global: boolean, refreshToken: string): Observable<ClientResponse<void>> {
-    return this.start()
+    return this.startAnonymous()
         .withHeader('Content-Type', 'text/plain')
         .withUri('/api/logout')
         .withParameter('global', global)
@@ -983,11 +1107,266 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<LoginResponse>>}
    */
   passwordlessLogin(request: PasswordlessLoginRequest): Observable<ClientResponse<LoginResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/passwordless/login')
         .withJSONBody(request)
         .withMethod("POST")
         .go<LoginResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the application with the given Id.
+   *
+   * @param {string} applicationId The Id of the application to update.
+   * @param {ApplicationRequest} request The request that contains just the new application information.
+   * @returns {Observable<ClientResponse<ApplicationResponse>>}
+   */
+  patchApplication(applicationId: string, request: ApplicationRequest): Observable<ClientResponse<ApplicationResponse>> {
+    return this.start()
+        .withUri('/api/application')
+        .withUriSegment(applicationId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<ApplicationResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the application role with the given id for the application.
+   *
+   * @param {string} applicationId The Id of the application that the role belongs to.
+   * @param {string} roleId The Id of the role to update.
+   * @param {ApplicationRequest} request The request that contains just the new role information.
+   * @returns {Observable<ClientResponse<ApplicationResponse>>}
+   */
+  patchApplicationRole(applicationId: string, roleId: string, request: ApplicationRequest): Observable<ClientResponse<ApplicationResponse>> {
+    return this.start()
+        .withUri('/api/application')
+        .withUriSegment(applicationId)
+        .withUriSegment("role")
+        .withUriSegment(roleId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<ApplicationResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the consent with the given Id.
+   *
+   * @param {string} consentId The Id of the consent to update.
+   * @param {ConsentRequest} request The request that contains just the new consent information.
+   * @returns {Observable<ClientResponse<ConsentResponse>>}
+   */
+  patchConsent(consentId: string, request: ConsentRequest): Observable<ClientResponse<ConsentResponse>> {
+    return this.start()
+        .withUri('/api/consent')
+        .withUriSegment(consentId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<ConsentResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the email template with the given Id.
+   *
+   * @param {string} emailTemplateId The Id of the email template to update.
+   * @param {EmailTemplateRequest} request The request that contains just the new email template information.
+   * @returns {Observable<ClientResponse<EmailTemplateResponse>>}
+   */
+  patchEmailTemplate(emailTemplateId: string, request: EmailTemplateRequest): Observable<ClientResponse<EmailTemplateResponse>> {
+    return this.start()
+        .withUri('/api/email/template')
+        .withUriSegment(emailTemplateId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<EmailTemplateResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the group with the given Id.
+   *
+   * @param {string} groupId The Id of the group to update.
+   * @param {GroupRequest} request The request that contains just the new group information.
+   * @returns {Observable<ClientResponse<GroupResponse>>}
+   */
+  patchGroup(groupId: string, request: GroupRequest): Observable<ClientResponse<GroupResponse>> {
+    return this.start()
+        .withUri('/api/group')
+        .withUriSegment(groupId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<GroupResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the identity provider with the given Id.
+   *
+   * @param {string} identityProviderId The Id of the identity provider to update.
+   * @param {IdentityProviderRequest} request The request object that contains just the updated identity provider information.
+   * @returns {Observable<ClientResponse<IdentityProviderResponse>>}
+   */
+  patchIdentityProvider(identityProviderId: string, request: IdentityProviderRequest): Observable<ClientResponse<IdentityProviderResponse>> {
+    return this.start()
+        .withUri('/api/identity-provider')
+        .withUriSegment(identityProviderId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<IdentityProviderResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the available integrations.
+   *
+   * @param {IntegrationRequest} request The request that contains just the new integration information.
+   * @returns {Observable<ClientResponse<IntegrationResponse>>}
+   */
+  patchIntegrations(request: IntegrationRequest): Observable<ClientResponse<IntegrationResponse>> {
+    return this.start()
+        .withUri('/api/integration')
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<IntegrationResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the lambda with the given Id.
+   *
+   * @param {string} lambdaId The Id of the lambda to update.
+   * @param {LambdaRequest} request The request that contains just the new lambda information.
+   * @returns {Observable<ClientResponse<LambdaResponse>>}
+   */
+  patchLambda(lambdaId: string, request: LambdaRequest): Observable<ClientResponse<LambdaResponse>> {
+    return this.start()
+        .withUri('/api/lambda')
+        .withUriSegment(lambdaId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<LambdaResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the registration for the user with the given id and the application defined in the request.
+   *
+   * @param {string} userId The Id of the user whose registration is going to be updated.
+   * @param {RegistrationRequest} request The request that contains just the new registration information.
+   * @returns {Observable<ClientResponse<RegistrationResponse>>}
+   */
+  patchRegistration(userId: string, request: RegistrationRequest): Observable<ClientResponse<RegistrationResponse>> {
+    return this.start()
+        .withUri('/api/user/registration')
+        .withUriSegment(userId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<RegistrationResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the system configuration.
+   *
+   * @param {SystemConfigurationRequest} request The request that contains just the new system configuration information.
+   * @returns {Observable<ClientResponse<SystemConfigurationResponse>>}
+   */
+  patchSystemConfiguration(request: SystemConfigurationRequest): Observable<ClientResponse<SystemConfigurationResponse>> {
+    return this.start()
+        .withUri('/api/system-configuration')
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<SystemConfigurationResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the tenant with the given Id.
+   *
+   * @param {string} tenantId The Id of the tenant to update.
+   * @param {TenantRequest} request The request that contains just the new tenant information.
+   * @returns {Observable<ClientResponse<TenantResponse>>}
+   */
+  patchTenant(tenantId: string, request: TenantRequest): Observable<ClientResponse<TenantResponse>> {
+    return this.start()
+        .withUri('/api/tenant')
+        .withUriSegment(tenantId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<TenantResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the theme with the given Id.
+   *
+   * @param {string} themeId The Id of the theme to update.
+   * @param {ThemeRequest} request The request that contains just the new theme information.
+   * @returns {Observable<ClientResponse<ThemeResponse>>}
+   */
+  patchTheme(themeId: string, request: ThemeRequest): Observable<ClientResponse<ThemeResponse>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withUriSegment(themeId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<ThemeResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the user with the given Id.
+   *
+   * @param {string} userId The Id of the user to update.
+   * @param {UserRequest} request The request that contains just the new user information.
+   * @returns {Observable<ClientResponse<UserResponse>>}
+   */
+  patchUser(userId: string, request: UserRequest): Observable<ClientResponse<UserResponse>> {
+    return this.start()
+        .withUri('/api/user')
+        .withUriSegment(userId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<UserResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the user action with the given Id.
+   *
+   * @param {string} userActionId The Id of the user action to update.
+   * @param {UserActionRequest} request The request that contains just the new user action information.
+   * @returns {Observable<ClientResponse<UserActionResponse>>}
+   */
+  patchUserAction(userActionId: string, request: UserActionRequest): Observable<ClientResponse<UserActionResponse>> {
+    return this.start()
+        .withUri('/api/user-action')
+        .withUriSegment(userActionId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<UserActionResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, the user action reason with the given Id.
+   *
+   * @param {string} userActionReasonId The Id of the user action reason to update.
+   * @param {UserActionReasonRequest} request The request that contains just the new user action reason information.
+   * @returns {Observable<ClientResponse<UserActionReasonResponse>>}
+   */
+  patchUserActionReason(userActionReasonId: string, request: UserActionReasonRequest): Observable<ClientResponse<UserActionReasonResponse>> {
+    return this.start()
+        .withUri('/api/user-action-reason')
+        .withUriSegment(userActionReasonId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<UserActionReasonResponse>();
+  }
+
+  /**
+   * Updates, via PATCH, a single User consent by Id.
+   *
+   * @param {string} userConsentId The User Consent Id
+   * @param {UserConsentRequest} request The request that contains just the new user consent information.
+   * @returns {Observable<ClientResponse<UserConsentResponse>>}
+   */
+  patchUserConsent(userConsentId: string, request: UserConsentRequest): Observable<ClientResponse<UserConsentResponse>> {
+    return this.start()
+        .withUri('/api/user/consent')
+        .withUriSegment(userConsentId)
+        .withJSONBody(request)
+        .withMethod("PATCH")
+        .go<UserConsentResponse>();
   }
 
   /**
@@ -1042,11 +1421,26 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<LoginResponse>>}
    */
   reconcileJWT(request: IdentityProviderLoginRequest): Observable<ClientResponse<LoginResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/jwt/reconcile')
         .withJSONBody(request)
         .withMethod("POST")
         .go<LoginResponse>();
+  }
+
+  /**
+   * Request a refresh of the User search index. This API is not generally necessary and the search index will become consistent in a
+   * reasonable amount of time. There may be scenarios where you may wish to manually request an index refresh. One example may be 
+   * if you are using the Search API or Delete Tenant API immediately following a User Create etc, you may wish to request a refresh to
+   *  ensure the index immediately current before making a query request to the search index.
+   *
+   * @returns {Observable<ClientResponse<void>>}
+   */
+  refreshUserSearchIndex(): Observable<ClientResponse<void>> {
+    return this.start()
+        .withUri('/api/user/search')
+        .withMethod("PUT")
+        .go<void>();
   }
 
   /**
@@ -1092,7 +1486,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<VerifyEmailResponse>>}
    */
   resendEmailVerification(email: string): Observable<ClientResponse<VerifyEmailResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/user/verify-email')
         .withParameter('email', email)
         .withMethod("PUT")
@@ -1107,7 +1501,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<VerifyRegistrationResponse>>}
    */
   resendRegistrationVerification(email: string, applicationId: string): Observable<ClientResponse<VerifyRegistrationResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/user/verify-registration')
         .withParameter('email', email)
         .withParameter('applicationId', applicationId)
@@ -1451,17 +1845,29 @@ export class FusionAuthClient {
   }
 
   /**
-   * Retrieves the Public Key configured for verifying JSON Web Tokens (JWT) by the key Id. If the key Id is provided a
-   * single public key will be returned if one is found by that id. If the optional parameter key Id is not provided all
-   * public keys will be returned.
+   * Retrieves the Public Key configured for verifying JSON Web Tokens (JWT) by the key Id (kid).
    *
-   * @param {string} keyId (Optional) The Id of the public key.
+   * @param {string} keyId The Id of the public key (kid).
    * @returns {Observable<ClientResponse<PublicKeyResponse>>}
    */
   retrieveJWTPublicKey(keyId: string): Observable<ClientResponse<PublicKeyResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/jwt/public-key')
-        .withUriSegment(keyId)
+        .withParameter('kid', keyId)
+        .withMethod("GET")
+        .go<PublicKeyResponse>();
+  }
+
+  /**
+   * Retrieves the Public Key configured for verifying the JSON Web Tokens (JWT) issued by the Login API by the Application Id.
+   *
+   * @param {string} applicationId The Id of the Application for which this key is used.
+   * @returns {Observable<ClientResponse<PublicKeyResponse>>}
+   */
+  retrieveJWTPublicKeyByApplicationId(applicationId: string): Observable<ClientResponse<PublicKeyResponse>> {
+    return this.startAnonymous()
+        .withUri('/api/jwt/public-key')
+        .withParameter('applicationId', applicationId)
         .withMethod("GET")
         .go<PublicKeyResponse>();
   }
@@ -1472,10 +1878,22 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<PublicKeyResponse>>}
    */
   retrieveJWTPublicKeys(): Observable<ClientResponse<PublicKeyResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/jwt/public-key')
         .withMethod("GET")
         .go<PublicKeyResponse>();
+  }
+
+  /**
+   * Returns public keys used by FusionAuth to cryptographically verify JWTs using the JSON Web Key format.
+   *
+   * @returns {Observable<ClientResponse<JWKSResponse>>}
+   */
+  retrieveJsonWebKeySet(): Observable<ClientResponse<JWKSResponse>> {
+    return this.startAnonymous()
+        .withUri('/.well-known/jwks.json')
+        .withMethod("GET")
+        .go<JWKSResponse>();
   }
 
   /**
@@ -1598,13 +2016,44 @@ export class FusionAuthClient {
   }
 
   /**
-   * Retrieves the password validation rules.
+   * Returns the well known OpenID Configuration JSON document
+   *
+   * @returns {Observable<ClientResponse<OpenIdConfiguration>>}
+   */
+  retrieveOpenIdConfiguration(): Observable<ClientResponse<OpenIdConfiguration>> {
+    return this.startAnonymous()
+        .withUri('/.well-known/openid-configuration')
+        .withMethod("GET")
+        .go<OpenIdConfiguration>();
+  }
+
+  /**
+   * Retrieves the password validation rules for a specific tenant. This method requires a tenantId to be provided 
+   * through the use of a Tenant scoped API key or an HTTP header X-FusionAuth-TenantId to specify the Tenant Id.
+   * 
+   * This API does not require an API key.
    *
    * @returns {Observable<ClientResponse<PasswordValidationRulesResponse>>}
    */
   retrievePasswordValidationRules(): Observable<ClientResponse<PasswordValidationRulesResponse>> {
-    return this.start()
-        .withUri('/api/system-configuration/password-validation-rules')
+    return this.startAnonymous()
+        .withUri('/api/tenant/password-validation-rules')
+        .withMethod("GET")
+        .go<PasswordValidationRulesResponse>();
+  }
+
+  /**
+   * Retrieves the password validation rules for a specific tenant.
+   * 
+   * This API does not require an API key.
+   *
+   * @param {string} tenantId The Id of the tenant.
+   * @returns {Observable<ClientResponse<PasswordValidationRulesResponse>>}
+   */
+  retrievePasswordValidationRulesWithTenantId(tenantId: string): Observable<ClientResponse<PasswordValidationRulesResponse>> {
+    return this.startAnonymous()
+        .withUri('/api/tenant/password-validation-rules')
+        .withUriSegment(tenantId)
         .withMethod("GET")
         .go<PasswordValidationRulesResponse>();
   }
@@ -1724,6 +2173,32 @@ export class FusionAuthClient {
         .withUri('/api/tenant')
         .withMethod("GET")
         .go<TenantResponse>();
+  }
+
+  /**
+   * Retrieves the theme for the given Id.
+   *
+   * @param {string} themeId The Id of the theme.
+   * @returns {Observable<ClientResponse<ThemeResponse>>}
+   */
+  retrieveTheme(themeId: string): Observable<ClientResponse<ThemeResponse>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withUriSegment(themeId)
+        .withMethod("GET")
+        .go<ThemeResponse>();
+  }
+
+  /**
+   * Retrieves all of the themes.
+   *
+   * @returns {Observable<ClientResponse<ThemeResponse>>}
+   */
+  retrieveThemes(): Observable<ClientResponse<ThemeResponse>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withMethod("GET")
+        .go<ThemeResponse>();
   }
 
   /**
@@ -1988,7 +2463,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<UserResponse>>}
    */
   retrieveUserUsingJWT(encodedJWT: string): Observable<ClientResponse<UserResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/user')
         .withAuthorization('JWT ' + encodedJWT)
         .withMethod("GET")
@@ -2163,7 +2638,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<void>>}
    */
   sendPasswordlessCode(request: PasswordlessSendRequest): Observable<ClientResponse<void>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/passwordless/send')
         .withJSONBody(request)
         .withMethod("POST")
@@ -2191,10 +2666,25 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<void>>}
    */
   sendTwoFactorCodeForLogin(twoFactorId: string): Observable<ClientResponse<void>> {
-    return this.start()
+    return this.startAnonymous()
         .withHeader('Content-Type', 'text/plain')
         .withUri('/api/two-factor/send')
         .withUriSegment(twoFactorId)
+        .withMethod("POST")
+        .go<void>();
+  }
+
+  /**
+   * Start a passwordless login request by generating a passwordless code. This code can be sent to the User using the Send
+   * Passwordless Code API or using a mechanism outside of FusionAuth. The passwordless login is completed by using the Passwordless Login API with this code.
+   *
+   * @param {PasswordlessStartRequest} request The passwordless start request that contains all of the information used to begin the passwordless login request.
+   * @returns {Observable<ClientResponse<void>>}
+   */
+  startPasswordlessLogin(request: PasswordlessStartRequest): Observable<ClientResponse<void>> {
+    return this.start()
+        .withUri('/api/passwordless/start')
+        .withJSONBody(request)
         .withMethod("POST")
         .go<void>();
   }
@@ -2206,7 +2696,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<LoginResponse>>}
    */
   twoFactorLogin(request: TwoFactorLoginRequest): Observable<ClientResponse<LoginResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/two-factor/login')
         .withJSONBody(request)
         .withMethod("POST")
@@ -2405,6 +2895,22 @@ export class FusionAuthClient {
   }
 
   /**
+   * Updates the theme with the given Id.
+   *
+   * @param {string} themeId The Id of the theme to update.
+   * @param {ThemeRequest} request The request that contains all of the new theme information.
+   * @returns {Observable<ClientResponse<ThemeResponse>>}
+   */
+  updateTheme(themeId: string, request: ThemeRequest): Observable<ClientResponse<ThemeResponse>> {
+    return this.start()
+        .withUri('/api/theme')
+        .withUriSegment(themeId)
+        .withJSONBody(request)
+        .withMethod("PUT")
+        .go<ThemeResponse>();
+  }
+
+  /**
    * Updates the user with the given Id.
    *
    * @param {string} userId The Id of the user to update.
@@ -2485,6 +2991,23 @@ export class FusionAuthClient {
   }
 
   /**
+   * Validates the end-user provided user_code from the user-interaction of the Device Authorization Grant.
+   * If you build your own activation form you should validate the user provided code prior to beginning the Authorization grant.
+   *
+   * @param {string} user_code The end-user verification code.
+   * @param {string} client_id The client id.
+   * @returns {Observable<ClientResponse<void>>}
+   */
+  validateDevice(user_code: string, client_id: string): Observable<ClientResponse<void>> {
+    return this.startAnonymous()
+        .withUri('/oauth2/device/validate')
+        .withParameter('user_code', user_code)
+        .withParameter('client_id', client_id)
+        .withMethod("GET")
+        .go<void>();
+  }
+
+  /**
    * Validates the provided JWT (encoded JWT string) to ensure the token is valid. A valid access token is properly
    * signed and not expired.
    * <p>
@@ -2494,7 +3017,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<ValidateResponse>>}
    */
   validateJWT(encodedJWT: string): Observable<ClientResponse<ValidateResponse>> {
-    return this.start()
+    return this.startAnonymous()
         .withUri('/api/jwt/validate')
         .withAuthorization('JWT ' + encodedJWT)
         .withMethod("GET")
@@ -2508,7 +3031,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<void>>}
    */
   verifyEmail(verificationId: string): Observable<ClientResponse<void>> {
-    return this.start()
+    return this.startAnonymous()
         .withHeader('Content-Type', 'text/plain')
         .withUri('/api/user/verify-email')
         .withUriSegment(verificationId)
@@ -2523,7 +3046,7 @@ export class FusionAuthClient {
    * @returns {Observable<ClientResponse<void>>}
    */
   verifyRegistration(verificationId: string): Observable<ClientResponse<void>> {
-    return this.start()
+    return this.startAnonymous()
         .withHeader('Content-Type', 'text/plain')
         .withUri('/api/user/verify-registration')
         .withUriSegment(verificationId)
@@ -2543,7 +3066,15 @@ export class FusionAuthClient {
    * @private
    */
   private start(): IRESTClient {
-    return this.clientBuilder.build(this.host).withAuthorization(this.apiKey);
+    return this.startAnonymous().withAuthorization(this.apiKey);
+  }
+
+  private startAnonymous(): IRESTClient {
+    let client = this.clientBuilder.build(this.host);
+    if (this.tenantId != null) {
+      client.withHeader('X-FusionAuth-TenantId', this.tenantId);
+    }
+    return client;
   }
 }
 
@@ -2552,10 +3083,8 @@ export class FusionAuthClient {
  */
 export interface AccessToken {
   access_token?: string;
-  clientId?: string;
   expires_in?: number;
   id_token?: string;
-  redirectURI?: string;
   refresh_token?: string;
   scope?: string;
   token_type?: TokenType;
@@ -2563,19 +3092,14 @@ export interface AccessToken {
 }
 
 export interface ActionData {
-  action?: UserAction;
-  actionee?: User;
   actioneeUserId?: string;
-  actioner?: User;
   actionerUserId?: string;
   applicationIds?: Array<string>;
   comment?: string;
   emailUser?: boolean;
   expiry?: number;
-  log?: UserActionLog;
   notifyUser?: boolean;
   option?: string;
-  reason?: UserActionReason;
   reasonId?: string;
   userActionId?: string;
 }
@@ -2606,16 +3130,16 @@ export interface ActionResponse {
  * @author Daniel DeGroff
  */
 export enum Algorithm {
-  ES256,
-  ES384,
-  ES512,
-  HS256,
-  HS384,
-  HS512,
-  RS256,
-  RS384,
-  RS512,
-  none
+  ES256: "SHA256withECDSA",
+  ES384: "SHA384withECDSA",
+  ES512: "SHA512withECDSA",
+  HS256: "HmacSHA256",
+  HS384: "HmacSHA384",
+  HS512: "HmacSHA512",
+  RS256: "SHA256withRSA",
+  RS384: "SHA384withRSA",
+  RS512: "SHA512withRSA",
+  none: "None"
 }
 
 /**
@@ -2677,9 +3201,7 @@ export interface ApplicationResponse {
  * @author Seth Musselman
  */
 export interface ApplicationRole {
-  applicationId?: string;
   description?: string;
-  display?: string;
   id?: string;
   isDefault?: boolean;
   isSuperRole?: boolean;
@@ -2778,7 +3300,7 @@ export interface AuthenticationTokenConfiguration extends Enableable {
 export interface BaseEvent {
   createInstant?: number;
   id?: string;
-  type?: EventType;
+  tenantId?: string;
 }
 
 /**
@@ -2793,6 +3315,7 @@ export interface BaseExportRequest {
 export interface BaseIdentityProvider<D extends BaseIdentityProviderApplicationConfiguration> extends Enableable {
   applicationConfiguration?: Map<string, D>;
   data?: Map<string, any>;
+  debug?: boolean;
   id?: string;
   name?: string;
   type?: IdentityProviderType;
@@ -2826,10 +3349,10 @@ export interface BaseSearchCriteria {
 }
 
 export enum CanonicalizationMethod {
-  exclusive,
-  exclusive_with_comments,
-  inclusive,
-  inclusive_with_comments
+  exclusive: "exclusive",
+  exclusive_with_comments: "exclusive_with_comments",
+  inclusive: "inclusive",
+  inclusive_with_comments: "inclusive_with_comments"
 }
 
 export interface CertificateInformation {
@@ -2921,8 +3444,8 @@ export interface ConsentResponse {
  * @author Daniel DeGroff
  */
 export enum ConsentStatus {
-  Active,
-  Revoked
+  Active: "Active",
+  Revoked: "Revoked"
 }
 
 /**
@@ -2931,9 +3454,18 @@ export enum ConsentStatus {
  * @author Brian Pontarelli
  */
 export enum ContentStatus {
-  ACTIVE,
-  PENDING,
-  REJECTED
+  ACTIVE: "ACTIVE",
+  PENDING: "PENDING",
+  REJECTED: "REJECTED"
+}
+
+export interface CORSConfiguration extends Enableable {
+  allowCredentials?: boolean;
+  allowedHeaders?: Array<string>;
+  allowedMethods?: Array<HTTPMethod>;
+  allowedOrigins?: Array<string>;
+  exposedHeaders?: Array<string>;
+  preflightMaxAgeInSeconds?: number;
 }
 
 /**
@@ -2969,16 +3501,28 @@ export interface DeviceInfo {
   type?: DeviceType;
 }
 
+/**
+ * @author Trevor Smith
+ */
+export interface DeviceResponse {
+  device_code?: string;
+  expires_in?: number;
+  interval?: number;
+  user_code?: string;
+  verification_uri?: string;
+  verification_uri_complete?: string;
+}
+
 export enum DeviceType {
-  BROWSER,
-  DESKTOP,
-  LAPTOP,
-  MOBILE,
-  OTHER,
-  SERVER,
-  TABLET,
-  TV,
-  UNKNOWN
+  BROWSER: "BROWSER",
+  DESKTOP: "DESKTOP",
+  LAPTOP: "LAPTOP",
+  MOBILE: "MOBILE",
+  OTHER: "OTHER",
+  SERVER: "SERVER",
+  TABLET: "TABLET",
+  TV: "TV",
+  UNKNOWN: "UNKNOWN"
 }
 
 /**
@@ -3024,7 +3568,10 @@ export interface EmailAddress {
   display?: string;
 }
 
-export interface EmailConfiguration extends Enableable {
+/**
+ * @author Brian Pontarelli
+ */
+export interface EmailConfiguration {
   forgotPasswordEmailTemplateId?: string;
   host?: string;
   password?: string;
@@ -3046,9 +3593,9 @@ export interface EmailPlus extends Enableable {
 }
 
 export enum EmailSecurityType {
-  NONE,
-  SSL,
-  TLS
+  NONE: "NONE",
+  SSL: "SSL",
+  TLS: "TLS"
 }
 
 /**
@@ -3063,7 +3610,6 @@ export interface EmailTemplate {
   defaultTextTemplate?: string;
   fromEmail?: string;
   id?: string;
-  localizations?: Set<string>;
   localizedFromNames?: LocalizedStrings;
   localizedHtmlTemplates?: LocalizedStrings;
   localizedSubjects?: LocalizedStrings;
@@ -3112,7 +3658,6 @@ export interface Enableable {
 export interface Error {
   code?: string;
   message?: string;
-  values?: Array<any>;
 }
 
 /**
@@ -3125,6 +3670,9 @@ export interface Errors {
   generalErrors?: Array<Error>;
 }
 
+/**
+ * @author Brian Pontarelli
+ */
 export interface EventConfiguration {
   events?: Map<EventType, EventConfigurationData>;
 }
@@ -3193,9 +3741,9 @@ export interface EventLogSearchResponse {
  * @author Daniel DeGroff
  */
 export enum EventLogType {
-  Information,
-  Debug,
-  Error
+  Information: "Information",
+  Debug: "Debug",
+  Error: "Error"
 }
 
 /**
@@ -3213,42 +3761,54 @@ export interface EventRequest {
  * @author Brian Pontarelli
  */
 export enum EventType {
-  UserDelete,
-  UserCreate,
-  UserUpdate,
-  UserDeactivate,
-  UserBulkCreate,
-  UserReactivate,
-  UserAction,
-  JWTRefreshTokenRevoke,
-  JWTPublicKeyUpdate,
-  UserLoginSuccess,
-  UserLoginFailed,
-  UserRegistrationCreate,
-  UserRegistrationUpdate,
-  UserRegistrationDelete,
-  Test
+  UserDelete: "user.delete",
+  UserCreate: "user.create",
+  UserUpdate: "user.update",
+  UserDeactivate: "user.deactivate",
+  UserBulkCreate: "user.bulk.create",
+  UserReactivate: "user.reactivate",
+  UserAction: "user.action",
+  JWTRefreshTokenRevoke: "jwt.refresh-token.revoke",
+  JWTPublicKeyUpdate: "jwt.public-key.update",
+  UserLoginSuccess: "user.login.success",
+  UserLoginFailed: "user.login.failed",
+  UserRegistrationCreate: "user.registration.create",
+  UserRegistrationUpdate: "user.registration.update",
+  UserRegistrationDelete: "user.registration.delete",
+  UserRegistrationVerified: "user.registration.verified",
+  UserEmailVerified: "user.email.verified",
+  Test: "test"
 }
 
 /**
  * @author Brian Pontarelli
  */
 export enum ExpiryUnit {
-  MINUTES,
-  HOURS,
-  DAYS,
-  WEEKS,
-  MONTHS,
-  YEARS
+  MINUTES: "MINUTES",
+  HOURS: "HOURS",
+  DAYS: "DAYS",
+  WEEKS: "WEEKS",
+  MONTHS: "MONTHS",
+  YEARS: "YEARS"
 }
 
+/**
+ * @author Daniel DeGroff
+ */
 export interface ExternalIdentifierConfiguration {
   authorizationGrantIdTimeToLiveInSeconds?: number;
+  changePasswordIdGenerator?: SecureGeneratorConfiguration;
   changePasswordIdTimeToLiveInSeconds?: number;
+  deviceCodeTimeToLiveInSeconds?: number;
+  deviceUserCodeIdGenerator?: SecureGeneratorConfiguration;
+  emailVerificationIdGenerator?: SecureGeneratorConfiguration;
   emailVerificationIdTimeToLiveInSeconds?: number;
   oneTimePasswordTimeToLiveInSeconds?: number;
+  passwordlessLoginGenerator?: SecureGeneratorConfiguration;
   passwordlessLoginTimeToLiveInSeconds?: number;
+  registrationVerificationIdGenerator?: SecureGeneratorConfiguration;
   registrationVerificationIdTimeToLiveInSeconds?: number;
+  setupPasswordIdGenerator?: SecureGeneratorConfiguration;
   setupPasswordIdTimeToLiveInSeconds?: number;
   twoFactorIdTimeToLiveInSeconds?: number;
   twoFactorTrustIdTimeToLiveInSeconds?: number;
@@ -3271,7 +3831,6 @@ export interface ExternalJWTIdentityProvider extends BaseIdentityProvider<Extern
   headerKeyParameter?: string;
   keys?: Map<string, string>;
   oauth2?: IdentityProviderOauth2Configuration;
-  type?: IdentityProviderType;
   uniqueIdentityClaim?: string;
 }
 
@@ -3297,7 +3856,6 @@ export interface FacebookIdentityProvider extends BaseIdentityProvider<FacebookA
   client_secret?: string;
   fields?: string;
   permissions?: string;
-  type?: IdentityProviderType;
 }
 
 /**
@@ -3323,6 +3881,9 @@ export interface Family {
   members?: Array<FamilyMember>;
 }
 
+/**
+ * @author Brian Pontarelli
+ */
 export interface FamilyConfiguration extends Enableable {
   allowChildRegistrations?: boolean;
   confirmChildEmailTemplateId?: string;
@@ -3377,9 +3938,9 @@ export interface FamilyResponse {
 }
 
 export enum FamilyRole {
-  Child,
-  Teen,
-  Adult
+  Child: "Child",
+  Teen: "Teen",
+  Adult: "Adult"
 }
 
 /**
@@ -3425,7 +3986,6 @@ export interface GoogleIdentityProvider extends BaseIdentityProvider<GoogleAppli
   client_id?: string;
   client_secret?: string;
   scope?: string;
-  type?: IdentityProviderType;
 }
 
 /**
@@ -3438,12 +3998,13 @@ export interface GoogleIdentityProvider extends BaseIdentityProvider<GoogleAppli
  * @author Daniel DeGroff
  */
 export enum GrantType {
-  authorization_code,
-  implicit,
-  password,
-  client_credentials,
-  refresh_token,
-  unknown
+  authorization_code: "authorization_code",
+  implicit: "implicit",
+  password: "password",
+  client_credentials: "client_credentials",
+  refresh_token: "refresh_token",
+  unknown: "unknown",
+  device_code: "urn:ietf:params:oauth:grant-type:device_code"
 }
 
 /**
@@ -3505,6 +4066,22 @@ export interface HistoryItem {
 export interface HTTPHeaders extends Map<string, string> {
 }
 
+export enum HTTPMethod {
+  GET: "GET",
+  POST: "POST",
+  PUT: "PUT",
+  DELETE: "DELETE",
+  HEAD: "HEAD",
+  OPTIONS: "OPTIONS"
+}
+
+export interface IdentityProviderDetails {
+  id?: string;
+  name?: string;
+  oauth2?: IdentityProviderOauth2Configuration;
+  type?: IdentityProviderType;
+}
+
 /**
  * Login API request object used for login to third-party systems (i.e. Login with Facebook).
  *
@@ -3545,12 +4122,12 @@ export interface IdentityProviderResponse {
 }
 
 export enum IdentityProviderType {
-  ExternalJWT,
-  OpenIDConnect,
-  Facebook,
-  Google,
-  Twitter,
-  SAMLv2
+  ExternalJWT: "ExternalJWT",
+  OpenIDConnect: "OpenIDConnect",
+  Facebook: "Facebook",
+  Google: "Google",
+  Twitter: "Twitter",
+  SAMLv2: "SAMLv2"
 }
 
 /**
@@ -3632,10 +4209,59 @@ export interface IssueResponse {
 }
 
 /**
+ * A JSON Web Key as defined by <a href="https://tools.ietf.org/html/rfc7517#section-4">RFC 7517 JSON Web Key (JWK)
+ * Section 4</a> and <a href="https://tools.ietf.org/html/rfc7518">RFC 7518 JSON Web Algorithms (JWA)</a>.
+ *
+ * @author Daniel DeGroff
+ */
+export interface JSONWebKey {
+  alg?: Algorithm;
+  crv?: string;
+  d?: string;
+  dp?: string;
+  dq?: string;
+  e?: string;
+  kid?: string;
+  kty?: KeyType;
+  n?: string;
+  [other: string]: any; // Any other fields
+  p?: string;
+  q?: string;
+  qi?: string;
+  use?: string;
+  x?: string;
+  x5c?: Array<string>;
+  x5t?: string;
+  x5t#S256?: string;
+  y?: string;
+}
+
+/**
  * @author Daniel DeGroff
  */
 export interface JWKSResponse {
-  keys?: Array<Map<string, any>>;
+  keys?: Array<JSONWebKey>;
+}
+
+/**
+ * JSON Web Token (JWT) as defined by RFC 7519.
+ * <pre>
+ * From RFC 7519 Section 1. Introduction:
+ *    The suggested pronunciation of JWT is the same as the English word "jot".
+ * </pre>
+ * The JWT is not Thread-Safe and should not be re-used.
+ *
+ * @author Daniel DeGroff
+ */
+export interface JWT {
+  aud?: any;
+  exp?: number;
+  iat?: number;
+  iss?: string;
+  jti?: string;
+  nbf?: number;
+  [otherClaims: string]: any; // Any other fields
+  sub?: string;
 }
 
 /**
@@ -3659,7 +4285,6 @@ export interface JWTConfiguration extends Enableable {
  */
 export interface JWTPublicKeyUpdateEvent extends BaseEvent {
   applicationIds?: Set<string>;
-  type?: EventType;
 }
 
 /**
@@ -3671,7 +4296,7 @@ export interface JWTPublicKeyUpdateEvent extends BaseEvent {
 export interface JWTRefreshTokenRevokeEvent extends BaseEvent {
   applicationId?: string;
   applicationTimeToLiveInSeconds?: Map<string, number>;
-  type?: EventType;
+  user?: User;
   userId?: string;
 }
 
@@ -3692,7 +4317,6 @@ export interface Key {
   algorithm?: KeyAlgorithm;
   certificate?: string;
   certificateInformation?: CertificateInformation;
-  displayName?: string;
   expirationInstant?: number;
   id?: string;
   insertInstant?: number;
@@ -3708,15 +4332,15 @@ export interface Key {
 }
 
 export enum KeyAlgorithm {
-  ES256,
-  ES384,
-  ES512,
-  HS256,
-  HS384,
-  HS512,
-  RS256,
-  RS384,
-  RS512
+  ES256: "SHA256withECDSA",
+  ES384: "SHA384withECDSA",
+  ES512: "SHA512withECDSA",
+  HS256: "HmacSHA256",
+  HS384: "HmacSHA384",
+  HS512: "HmacSHA512",
+  RS256: "SHA256withRSA",
+  RS384: "SHA384withRSA",
+  RS512: "SHA512withRSA"
 }
 
 /**
@@ -3739,9 +4363,9 @@ export interface KeyResponse {
 }
 
 export enum KeyType {
-  EC,
-  RSA,
-  HMAC
+  EC: "EC",
+  RSA: "RSA",
+  HMAC: "HMAC"
 }
 
 /**
@@ -3793,10 +4417,10 @@ export interface LambdaResponse {
  * @author Brian Pontarelli
  */
 export enum LambdaType {
-  JWTPopulate,
-  OpenIDReconcile,
-  SAMLv2Reconcile,
-  SAMLv2Populate
+  JWTPopulate: "JWTPopulate",
+  OpenIDReconcile: "OpenIDReconcile",
+  SAMLv2Reconcile: "SAMLv2Reconcile",
+  SAMLv2Populate: "SAMLv2Populate"
 }
 
 /**
@@ -3831,8 +4455,8 @@ export interface LoginConfiguration {
 }
 
 export enum LoginIdType {
-  email,
-  username
+  email: "email",
+  username: "username"
 }
 
 /**
@@ -3928,34 +4552,19 @@ export interface LoginResponse {
   user?: User;
 }
 
-export interface LoginTheme extends Enableable {
-  emailComplete?: string;
-  emailSend?: string;
-  emailVerify?: string;
-  helpers?: string;
-  lastModified?: number;
-  oauth2Authorize?: string;
-  oauth2ChildRegistrationNotAllowed?: string;
-  oauth2ChildRegistrationNotAllowedComplete?: string;
-  oauth2CompleteRegistration?: string;
-  oauth2Error?: string;
-  oauth2Register?: string;
-  oauth2TwoFactor?: string;
-  passwordChange?: string;
-  passwordComplete?: string;
-  passwordForgot?: string;
-  passwordSent?: string;
-  registrationComplete?: string;
-  registrationSend?: string;
-  registrationVerify?: string;
-  stylesheet?: string;
+/**
+ * @author Matthew Altman
+ */
+export enum LogoutBehavior {
+  RedirectOnly: "RedirectOnly",
+  AllApplications: "AllApplications"
 }
 
 /**
  * @author Daniel DeGroff
  */
 export interface LookupResponse {
-  identityProvider?: BaseIdentityProvider<any>;
+  identityProvider?: IdentityProviderDetails;
 }
 
 /**
@@ -4031,8 +4640,10 @@ export interface OAuth2Configuration {
   authorizedRedirectURLs?: Array<string>;
   clientId?: string;
   clientSecret?: string;
+  deviceVerificationURL?: string;
   enabledGrants?: Set<GrantType>;
   generateRefreshTokens?: boolean;
+  logoutBehavior?: LogoutBehavior;
   logoutURL?: string;
   requireClientAuthentication?: boolean;
 }
@@ -4059,52 +4670,65 @@ export interface OAuthError {
 }
 
 export enum OAuthErrorReason {
-  auth_code_not_found,
-  access_token_malformed,
-  access_token_expired,
-  access_token_unavailable_for_processing,
-  access_token_failed_processing,
-  refresh_token_not_found,
-  invalid_client_id,
-  invalid_user_credentials,
-  invalid_grant_type,
-  invalid_origin,
-  invalid_pkce_code_verifier_length,
-  invalid_pkce_code_challenge_length,
-  invalid_pkce_code_challenge_method,
-  invalid_redirect_uri,
-  invalid_response_type,
-  grant_type_disabled,
-  missing_client_id,
-  missing_code,
-  missing_code_challenge,
-  missing_grant_type,
-  missing_redirect_uri,
-  missing_refresh_token,
-  missing_response_type,
-  missing_token,
-  login_prevented,
-  user_expired,
-  user_not_found,
-  client_authentication_missing,
-  invalid_client_authentication_scheme,
-  invalid_client_authentication,
-  client_id_mismatch,
-  unknown
+  auth_code_not_found: "auth_code_not_found",
+  access_token_malformed: "access_token_malformed",
+  access_token_expired: "access_token_expired",
+  access_token_unavailable_for_processing: "access_token_unavailable_for_processing",
+  access_token_failed_processing: "access_token_failed_processing",
+  refresh_token_not_found: "refresh_token_not_found",
+  invalid_client_id: "invalid_client_id",
+  invalid_user_credentials: "invalid_user_credentials",
+  invalid_grant_type: "invalid_grant_type",
+  invalid_origin: "invalid_origin",
+  invalid_origin_opaque: "invalid_origin_opaque",
+  invalid_pkce_code_verifier: "invalid_pkce_code_verifier",
+  invalid_pkce_code_challenge: "invalid_pkce_code_challenge",
+  invalid_pkce_code_challenge_method: "invalid_pkce_code_challenge_method",
+  invalid_redirect_uri: "invalid_redirect_uri",
+  invalid_response_mode: "invalid_response_mode",
+  invalid_response_type: "invalid_response_type",
+  invalid_id_token_hint: "invalid_id_token_hint",
+  invalid_post_logout_redirect_uri: "invalid_post_logout_redirect_uri",
+  invalid_device_code: "invalid_device_code",
+  invalid_user_code: "invalid_user_code",
+  invalid_additional_client_id: "invalid_additional_client_id",
+  grant_type_disabled: "grant_type_disabled",
+  missing_client_id: "missing_client_id",
+  missing_code: "missing_code",
+  missing_device_code: "missing_device_code",
+  missing_grant_type: "missing_grant_type",
+  missing_redirect_uri: "missing_redirect_uri",
+  missing_refresh_token: "missing_refresh_token",
+  missing_response_type: "missing_response_type",
+  missing_token: "missing_token",
+  missing_user_code: "missing_user_code",
+  missing_verification_uri: "missing_verification_uri",
+  login_prevented: "login_prevented",
+  user_code_expired: "user_code_expired",
+  user_expired: "user_expired",
+  user_locked: "user_locked",
+  user_not_found: "user_not_found",
+  client_authentication_missing: "client_authentication_missing",
+  invalid_client_authentication_scheme: "invalid_client_authentication_scheme",
+  invalid_client_authentication: "invalid_client_authentication",
+  client_id_mismatch: "client_id_mismatch",
+  unknown: "unknown"
 }
 
 export enum OAuthErrorType {
-  invalid_request,
-  invalid_client,
-  invalid_grant,
-  invalid_token,
-  unauthorized_client,
-  invalid_scope,
-  server_error,
-  unsupported_grant_type,
-  unsupported_response_type,
-  change_password_required,
-  two_factor_required
+  invalid_request: "invalid_request",
+  invalid_client: "invalid_client",
+  invalid_grant: "invalid_grant",
+  invalid_token: "invalid_token",
+  unauthorized_client: "unauthorized_client",
+  invalid_scope: "invalid_scope",
+  server_error: "server_error",
+  unsupported_grant_type: "unsupported_grant_type",
+  unsupported_response_type: "unsupported_response_type",
+  change_password_required: "change_password_required",
+  two_factor_required: "two_factor_required",
+  authorization_pending: "authorization_pending",
+  expired_token: "expired_token"
 }
 
 /**
@@ -4114,18 +4738,23 @@ export interface OAuthResponse {
 }
 
 /**
- * OpenID Configuration as described by the <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">OpenID
+ * OpenID Connect Configuration as described by the <a href="https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata">OpenID
  * Provider Metadata</a>.
  *
  * @author Daniel DeGroff
  */
 export interface OpenIdConfiguration {
   authorization_endpoint?: string;
+  backchannel_logout_supported?: boolean;
   claims_supported?: Array<string>;
+  device_authorization_endpoint?: string;
+  end_session_endpoint?: string;
+  frontchannel_logout_supported?: boolean;
   grant_types_supported?: Array<string>;
   id_token_signing_alg_values_supported?: Array<string>;
   issuer?: string;
   jwks_uri?: string;
+  response_modes_supported?: Array<string>;
   response_types_supported?: Array<string>;
   scopes_supported?: Array<string>;
   subject_types_supported?: Array<string>;
@@ -4153,7 +4782,6 @@ export interface OpenIdConnectIdentityProvider extends BaseIdentityProvider<Open
   domains?: Set<string>;
   lambdaConfiguration?: LambdaConfiguration;
   oauth2?: IdentityProviderOauth2Configuration;
-  type?: IdentityProviderType;
 }
 
 /**
@@ -4183,8 +4811,25 @@ export interface PasswordlessLoginRequest extends BaseLoginRequest {
  */
 export interface PasswordlessSendRequest {
   applicationId?: string;
+  code?: string;
   loginId?: string;
   state?: Map<string, any>;
+}
+
+/**
+ * @author Daniel DeGroff
+ */
+export interface PasswordlessStartRequest {
+  applicationId?: string;
+  loginId?: string;
+  state?: Map<string, any>;
+}
+
+/**
+ * @author Daniel DeGroff
+ */
+export interface PasswordlessStartResponse {
+  code?: string;
 }
 
 /**
@@ -4281,7 +4926,6 @@ export interface RefreshResponse {
  * @author Daniel DeGroff
  */
 export interface RefreshToken {
-  application?: Application;
   applicationId?: string;
   insertInstant?: number;
   metaData?: MetaData;
@@ -4362,33 +5006,6 @@ export interface Requirable extends Enableable {
 /**
  * @author Brian Pontarelli
  */
-export interface SAML2ApplicationConfiguration extends BaseIdentityProviderApplicationConfiguration {
-  buttonImageURL?: string;
-  buttonText?: string;
-}
-
-/**
- * SAML v2 identity provider configuration.
- *
- * @author Brian Pontarelli
- */
-export interface SAML2IdentityProvider extends BaseIdentityProvider<SAML2ApplicationConfiguration> {
-  buttonImageURL?: string;
-  buttonText?: string;
-  claimMap?: Map<string, string>;
-  domains?: Set<string>;
-  emailClaim?: string;
-  idpEndpoint?: string;
-  requestPrivateKey?: string;
-  requestPublicKey?: string;
-  responsePublicKey?: string;
-  rolesClaim?: string;
-  type?: IdentityProviderType;
-}
-
-/**
- * @author Brian Pontarelli
- */
 export interface SAMLv2ApplicationConfiguration extends BaseIdentityProviderApplicationConfiguration {
   buttonImageURL?: string;
   buttonText?: string;
@@ -4418,7 +5035,6 @@ export interface SAMLv2IdentityProvider extends BaseIdentityProvider<SAMLv2Appli
   issuer?: string;
   keyId?: string;
   lambdaConfiguration?: LambdaConfiguration;
-  type?: IdentityProviderType;
   useNameIdForEmail?: boolean;
 }
 
@@ -4462,6 +5078,24 @@ export interface SecretResponse {
 /**
  * @author Daniel DeGroff
  */
+export interface SecureGeneratorConfiguration {
+  length?: number;
+  type?: SecureGeneratorType;
+}
+
+/**
+ * @author Daniel DeGroff
+ */
+export enum SecureGeneratorType {
+  randomDigits: "randomDigits",
+  randomBytes: "randomBytes",
+  randomAlpha: "randomAlpha",
+  randomAlphaNumeric: "randomAlphaNumeric"
+}
+
+/**
+ * @author Daniel DeGroff
+ */
 export interface SecureIdentity {
   encryptionScheme?: string;
   factor?: number;
@@ -4494,8 +5128,8 @@ export interface SendResponse {
  * @author Daniel DeGroff
  */
 export enum Sort {
-  asc,
-  desc
+  asc: "asc",
+  desc: "desc"
 }
 
 /**
@@ -4514,21 +5148,10 @@ export interface SystemConfiguration {
   auditLogConfiguration?: AuditLogConfiguration;
   cookieEncryptionIV?: string;
   cookieEncryptionKey?: string;
+  corsConfiguration?: CORSConfiguration;
   data?: Map<string, any>;
-  emailConfiguration?: EmailConfiguration;
-  eventConfiguration?: EventConfiguration;
   eventLogConfiguration?: EventLogConfiguration;
-  externalIdentifierConfiguration?: ExternalIdentifierConfiguration;
-  failedAuthenticationConfiguration?: FailedAuthenticationConfiguration;
-  httpSessionMaxInactiveInterval?: number;
-  issuer?: string;
-  jwtConfiguration?: JWTConfiguration;
   loginRecordConfiguration?: LoginRecordConfiguration;
-  logoutURL?: string;
-  maximumPasswordAge?: MaximumPasswordAge;
-  minimumPasswordAge?: MinimumPasswordAge;
-  passwordEncryptionConfiguration?: PasswordEncryptionConfiguration;
-  passwordValidationRules?: PasswordValidationRules;
   reportTimezone?: string;
   uiConfiguration?: UIConfiguration;
 }
@@ -4551,24 +5174,58 @@ export interface SystemConfigurationResponse {
   systemConfiguration?: SystemConfiguration;
 }
 
+export interface Templates {
+  emailComplete?: string;
+  emailSend?: string;
+  emailVerify?: string;
+  helpers?: string;
+  oauth2Authorize?: string;
+  oauth2ChildRegistrationNotAllowed?: string;
+  oauth2ChildRegistrationNotAllowedComplete?: string;
+  oauth2CompleteRegistration?: string;
+  oauth2Device?: string;
+  oauth2Error?: string;
+  oauth2Logout?: string;
+  oauth2Passwordless?: string;
+  oauth2Register?: string;
+  oauth2TwoFactor?: string;
+  passwordChange?: string;
+  passwordComplete?: string;
+  passwordForgot?: string;
+  passwordSent?: string;
+  registrationComplete?: string;
+  registrationSend?: string;
+  registrationVerify?: string;
+}
+
 /**
  * @author Daniel DeGroff
  */
 export interface Tenant {
+  configured?: boolean;
   data?: Map<string, any>;
-  emailConfiguration?: TenantEmailConfiguration;
+  emailConfiguration?: EmailConfiguration;
+  eventConfiguration?: EventConfiguration;
+  externalIdentifierConfiguration?: ExternalIdentifierConfiguration;
+  failedAuthenticationConfiguration?: FailedAuthenticationConfiguration;
   familyConfiguration?: FamilyConfiguration;
+  httpSessionMaxInactiveInterval?: number;
   id?: string;
+  issuer?: string;
+  jwtConfiguration?: JWTConfiguration;
+  logoutURL?: string;
+  maximumPasswordAge?: MaximumPasswordAge;
+  minimumPasswordAge?: MinimumPasswordAge;
   name?: string;
+  passwordEncryptionConfiguration?: PasswordEncryptionConfiguration;
+  passwordValidationRules?: PasswordValidationRules;
+  themeId?: string;
 }
 
-export interface TenantEmailConfiguration extends Enableable {
-  forgotPasswordEmailTemplateId?: string;
-  passwordlessEmailTemplateId?: string;
-  setPasswordEmailTemplateId?: string;
-  verificationEmailTemplateId?: string;
-  verifyEmail?: boolean;
-  verifyEmailWhenChanged?: boolean;
+/**
+ * @author Brian Pontarelli
+ */
+export interface Tenantable {
 }
 
 /**
@@ -4591,7 +5248,41 @@ export interface TenantResponse {
  */
 export interface TestEvent extends BaseEvent {
   message?: string;
-  type?: EventType;
+}
+
+/**
+ * @author Trevor Smith
+ */
+export interface Theme {
+  data?: Map<string, any>;
+  defaultMessages?: string;
+  id?: string;
+  insertInstant?: number;
+  lastUpdateInstant?: number;
+  localizedMessages?: LocalizedStrings;
+  name?: string;
+  stylesheet?: string;
+  templates?: Templates;
+}
+
+/**
+ * Theme API request object.
+ *
+ * @author Trevor Smith
+ */
+export interface ThemeRequest {
+  sourceThemeId?: string;
+  theme?: Theme;
+}
+
+/**
+ * Theme API response object.
+ *
+ * @author Trevor Smith
+ */
+export interface ThemeResponse {
+  theme?: Theme;
+  themes?: Array<Theme>;
 }
 
 /**
@@ -4606,8 +5297,8 @@ export interface TestEvent extends BaseEvent {
  * @author Daniel DeGroff
  */
 export enum TokenType {
-  Bearer,
-  MAC
+  Bearer: "Bearer",
+  MAC: "MAC"
 }
 
 export interface Totals {
@@ -4633,11 +5324,11 @@ export interface TotalsReportResponse {
  * @author Brian Pontarelli
  */
 export enum TransactionType {
-  None,
-  Any,
-  SimpleMajority,
-  SuperMajority,
-  AbsoluteMajority
+  None: "None",
+  Any: "Any",
+  SimpleMajority: "SimpleMajority",
+  SuperMajority: "SuperMajority",
+  AbsoluteMajority: "AbsoluteMajority"
 }
 
 /**
@@ -4671,15 +5362,14 @@ export interface TwitterIdentityProvider extends BaseIdentityProvider<TwitterApp
   buttonText?: string;
   consumerKey?: string;
   consumerSecret?: string;
-  type?: IdentityProviderType;
 }
 
 /**
  * @author Daniel DeGroff
  */
 export enum TwoFactorDelivery {
-  None,
-  TextMessage
+  None: "None",
+  TextMessage: "TextMessage"
 }
 
 /**
@@ -4712,7 +5402,6 @@ export interface TwoFactorSendRequest {
 
 export interface UIConfiguration {
   headerColor?: string;
-  loginTheme?: LoginTheme;
   logoURL?: string;
   menuFontColor?: string;
 }
@@ -4725,7 +5414,6 @@ export interface UIConfiguration {
  */
 export interface User extends SecureIdentity {
   active?: boolean;
-  age?: number;
   birthDate?: string;
   cleanSpeakId?: string;
   data?: Map<string, any>;
@@ -4737,11 +5425,9 @@ export interface User extends SecureIdentity {
   insertInstant?: number;
   lastLoginInstant?: number;
   lastName?: string;
-  login?: string;
   memberships?: Array<GroupMember>;
   middleName?: string;
   mobilePhone?: string;
-  name?: string;
   parentEmail?: string;
   preferredLanguages?: Array<string>;
   registrations?: Array<UserRegistration>;
@@ -4802,7 +5488,6 @@ export interface UserActionEvent extends BaseEvent {
   phase?: UserActionPhase;
   reason?: string;
   reasonCode?: string;
-  type?: EventType;
 }
 
 /**
@@ -4848,10 +5533,10 @@ export interface UserActionOption {
  * @author Brian Pontarelli
  */
 export enum UserActionPhase {
-  start,
-  modify,
-  cancel,
-  end
+  start: "start",
+  modify: "modify",
+  cancel: "cancel",
+  end: "end"
 }
 
 /**
@@ -4910,7 +5595,6 @@ export interface UserActionResponse {
  * @author Brian Pontarelli
  */
 export interface UserBulkCreateEvent extends BaseEvent {
-  type?: EventType;
   users?: Array<User>;
 }
 
@@ -4987,7 +5671,6 @@ export interface UserConsentResponse {
  * @author Brian Pontarelli
  */
 export interface UserCreateEvent extends BaseEvent {
-  type?: EventType;
   user?: User;
 }
 
@@ -4997,7 +5680,6 @@ export interface UserCreateEvent extends BaseEvent {
  * @author Brian Pontarelli
  */
 export interface UserDeactivateEvent extends BaseEvent {
-  type?: EventType;
   user?: User;
 }
 
@@ -5008,7 +5690,6 @@ export interface UserDeactivateEvent extends BaseEvent {
  * @author Brian Pontarelli
  */
 export interface UserDeleteEvent extends BaseEvent {
-  type?: EventType;
   user?: User;
 }
 
@@ -5020,6 +5701,15 @@ export interface UserDeleteEvent extends BaseEvent {
 export interface UserDeleteRequest {
   hardDelete?: boolean;
   userIds?: Array<string>;
+}
+
+/**
+ * Models the User Email Verify Event (and can be converted to JSON).
+ *
+ * @author Trevor Smith
+ */
+export interface UserEmailVerifiedEvent extends BaseEvent {
+  user?: User;
 }
 
 /**
@@ -5036,7 +5726,6 @@ export interface UserinfoResponse extends Map<string, any> {
 export interface UserLoginFailedEvent extends BaseEvent {
   applicationId?: string;
   authenticationType?: string;
-  type?: EventType;
   user?: User;
 }
 
@@ -5050,7 +5739,6 @@ export interface UserLoginSuccessEvent extends BaseEvent {
   authenticationType?: string;
   identityProviderId?: string;
   identityProviderName?: string;
-  type?: EventType;
   user?: User;
 }
 
@@ -5064,7 +5752,6 @@ export interface UsernameModeration extends Enableable {
  * @author Brian Pontarelli
  */
 export interface UserReactivateEvent extends BaseEvent {
-  type?: EventType;
   user?: User;
 }
 
@@ -5074,7 +5761,6 @@ export interface UserReactivateEvent extends BaseEvent {
  * @author Brian Pontarelli
  */
 export interface UserRegistration {
-  application?: Application;
   applicationId?: string;
   authenticationToken?: string;
   cleanSpeakId?: string;
@@ -5086,7 +5772,6 @@ export interface UserRegistration {
   roles?: Set<string>;
   timezone?: string;
   tokens?: Map<string, string>;
-  userId?: string;
   username?: string;
   usernameStatus?: ContentStatus;
   verified?: boolean;
@@ -5100,7 +5785,6 @@ export interface UserRegistration {
 export interface UserRegistrationCreateEvent extends BaseEvent {
   applicationId?: string;
   registration?: UserRegistration;
-  type?: EventType;
   user?: User;
 }
 
@@ -5112,7 +5796,6 @@ export interface UserRegistrationCreateEvent extends BaseEvent {
 export interface UserRegistrationDeleteEvent extends BaseEvent {
   applicationId?: string;
   registration?: UserRegistration;
-  type?: EventType;
   user?: User;
 }
 
@@ -5125,7 +5808,17 @@ export interface UserRegistrationUpdateEvent extends BaseEvent {
   applicationId?: string;
   original?: UserRegistration;
   registration?: UserRegistration;
-  type?: EventType;
+  user?: User;
+}
+
+/**
+ * Models the User Registration Verified Event (and can be converted to JSON).
+ *
+ * @author Trevor Smith
+ */
+export interface UserRegistrationVerifiedEvent extends BaseEvent {
+  applicationId?: string;
+  registration?: UserRegistration;
   user?: User;
 }
 
@@ -5168,8 +5861,8 @@ export interface UserSearchCriteria extends BaseSearchCriteria {
  * @author Daniel DeGroff
  */
 export enum UserState {
-  Authenticated,
-  AuthenticatedNotRegistered
+  Authenticated: "Authenticated",
+  AuthenticatedNotRegistered: "AuthenticatedNotRegistered"
 }
 
 /**
@@ -5179,7 +5872,6 @@ export enum UserState {
  */
 export interface UserUpdateEvent extends BaseEvent {
   original?: User;
-  type?: EventType;
   user?: User;
 }
 
@@ -5187,7 +5879,7 @@ export interface UserUpdateEvent extends BaseEvent {
  * @author Daniel DeGroff
  */
 export interface ValidateResponse {
-  jwt?: Map<string, any>;
+  jwt?: JWT;
 }
 
 /**
