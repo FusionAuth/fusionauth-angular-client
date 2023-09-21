@@ -1,3 +1,5 @@
+**This repo is out of date and is archived. Check out [an updated tutorial on using FusionAuth with the Angular SDK](https://fusionauth.io/docs/quickstarts/quickstart-javascript-angular-web) or [the Angular SDK](https://github.com/FusionAuth/fusionauth-angular-sdk/).**
+
 ## FusionAuth Angular Client
 ![semver 2.0.0 compliant](http://img.shields.io/badge/semver-2.0.0-brightgreen.svg?style=flat-square)
 
